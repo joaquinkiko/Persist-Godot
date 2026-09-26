@@ -1,6 +1,8 @@
 ## Persist autoload for save / load management
 extends Node
 
+const _TEMP_FILE_PREFIX := "save"
+
 var TEMP_PATH: String
 var SAVE_PATH: String = "user://save.bin"
 
@@ -18,7 +20,7 @@ func _exit_tree() -> void:
 	_temp_file = null
 
 func _temp_create() -> void:
-	_temp_file = FileAccess.create_temp(FileAccess.WRITE, "save", "tmp")
+	_temp_file = FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
 	if _temp_file == null:
 		push_error("Couldn't create temporary save: %s"%FileAccess.get_open_error())
 		return
@@ -99,7 +101,7 @@ func flush_pending_writes() -> void:
 	var old_file: FileAccess = null
 	old_file = _temp_open(FileAccess.READ)
 	
-	var new_file := FileAccess.create_temp(FileAccess.WRITE, "save", "tmp")
+	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
 	var new_index: Dictionary = {}
 	
 	for context_name in old_index.keys():
