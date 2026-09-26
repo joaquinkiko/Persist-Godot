@@ -136,3 +136,10 @@ func save_to_binary() -> void:
 	var save_file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	save_file.store_buffer(bytes)
 	save_file.close()
+
+## Loads a new, blank file
+func new_binary() -> void:
+	var temp_file := FileAccess.open(TEMP_PATH, FileAccess.WRITE)
+	temp_file.store_buffer([])
+	temp_file.close()
+	pending_writes.clear()
