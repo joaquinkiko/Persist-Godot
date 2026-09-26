@@ -4,7 +4,7 @@ extends Node
 const _TEMP_FILE_PREFIX := "save"
 
 var TEMP_PATH: String
-var SAVE_PATH: String = "user://save.bin"
+var SAVE_PATH: String = "user://save"
 
 ## Current context to assign to newly registered [PersistNode]s
 var context: StringName
