@@ -177,4 +177,6 @@ func set_save_path(path: String) -> void:
 	if !path.is_valid_filename():
 		push_error()
 		return
+	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
+		DirAccess.make_dir_absolute(path.get_base_dir())
 	SAVE_PATH = path
