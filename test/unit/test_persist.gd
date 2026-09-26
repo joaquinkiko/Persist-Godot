@@ -41,9 +41,9 @@ func test_set_context_changes_context() -> void:
 
 func test_register_and_unregister_node() -> void:
 	var node: PersistNode = _make_node(&"context_a", 10)
-	assert_true(Persist.registry[&"context_a"].has(node.initial_path))
+	assert_true(Persist.registry[&"context_a"].has(node.index_name))
 	test_root.remove_child(node)
-	assert_false(Persist.registry[&"context_a"].has(node.initial_path))
+	assert_false(Persist.registry[&"context_a"].has(node.index_name))
 	node.free()
 
 func test_flush_pending_writes_creates_temp_file() -> void:

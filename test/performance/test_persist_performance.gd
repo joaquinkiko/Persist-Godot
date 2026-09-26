@@ -48,12 +48,12 @@ func test_large_file_save_load_performance() -> void:
 		var blob: PackedByteArray = _make_blob(i)
 		context_names.append(context_name)
 		blob_by_context[context_name] = blob
-		Persist.pending_writes[context_name] = {path: {"blob": blob}}
+		Persist.pending_writes[context_name] = {StringName(path): {"blob": blob}}
 
 		# live node for later restore-correctness check
 		var node := FakeBlobNode.new()
 		node.context = context_name
-		node.initial_path = path
+		node.index_name = StringName(path)
 		node.properties = ["blob"]
 		node.root = node
 		fake_nodes.append(node)

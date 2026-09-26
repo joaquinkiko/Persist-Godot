@@ -6,12 +6,14 @@ class_name PersistNode extends Node
 ## Properties to be save / loaded. This cannot include Objects or
 ## Callables. These are validated on initialization.
 @export var properties: PackedStringArray
-## Inital path on entering tree
-var initial_path: NodePath
+@export_group("Optional Overrides", "override")
 ## Context this node is saved under. Typically left blank so that
 ## it can be populated by [Persist] when entering the tree. Optionally
 ## you can predefine a specific context to override [Persist] with.
 @export var context: StringName
+## Optional: Overrides the [member initial_path] for indexing.
+## Defaults to this node's nodepath
+@export var index_name: StringName
 
 func _init() -> void:
 	if root == null:
@@ -21,7 +23,8 @@ func _init() -> void:
 	_validate_properties()
 
 func _enter_tree() -> void:
-	initial_path = get_path()
+	if index_name.is_empty():
+		index_name = StringName(get_path())
 	Persist.register_node(self)
 
 func _exit_tree() -> void:

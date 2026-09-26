@@ -18,21 +18,21 @@ func set_context(new_context: StringName) -> void:
 func register_node(node: PersistNode) -> void:
 	if !registry.has(node.context):
 		registry[node.context] = {}
-	registry[node.context][node.initial_path] = node
+	registry[node.context][node.index_name] = node
 
 ## Stop tracking a [PersistNode], and call a [method queue_pending_write] on it
 func unregister_node(node: PersistNode) -> void:
 	if registry.has(node.context):
-		registry[node.context].erase(node.initial_path)
-		queue_pending_write(node.context, node.initial_path, node.get_state())
+		registry[node.context].erase(node.index_name)
+		queue_pending_write(node.context, node.index_name, node.get_state())
 
 ## Saves data to [member pending_writes] and makes a deffered call 
 ## to [method flush_pending_writes] (providing time for other writes to occur
 ## this frame before it they are flushed.
-func queue_pending_write(write_context: StringName, path: NodePath, data: Dictionary) -> void:
+func queue_pending_write(write_context: StringName, index: StringName, data: Dictionary) -> void:
 	if not pending_writes.has(write_context):
 		pending_writes[write_context] = {}
-	pending_writes[write_context][path] = data
+	pending_writes[write_context][index] = data
 	flush_pending_writes.call_deferred()
 
 ## Applies data for [param load_context_name] with matching registered [PersistNode]s

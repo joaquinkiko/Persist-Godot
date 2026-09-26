@@ -25,11 +25,11 @@ func test_enter_tree_assigns_loaded_context() -> void:
 func test_enter_tree_registers_node() -> void:
 	test_root.add_child(test_node)
 	assert_true(Persist.registry.has(&"test_context"))
-	assert_true(Persist.registry[&"test_context"].has(test_node.initial_path))
+	assert_true(Persist.registry[&"test_context"].has(test_node.index_name))
 
 func test_exit_tree_unregisters_node() -> void:
 	test_root.add_child(test_node)
-	var path: NodePath = test_node.initial_path
+	var path := StringName(test_node.index_name)
 	test_root.remove_child(test_node)
 	assert_false(Persist.registry[&"test_context"].has(path))
 	test_node.free()
@@ -37,7 +37,7 @@ func test_exit_tree_unregisters_node() -> void:
 func test_exit_tree_queues_pending_write() -> void:
 	test_root.add_child(test_node)
 	test_node.set("health", 42)
-	var path: NodePath = test_node.initial_path
+	var path := StringName(test_node.index_name)
 	test_root.remove_child(test_node)
 	assert_true(Persist.pending_writes.has(&"test_context"))
 	assert_eq(Persist.pending_writes[&"test_context"][path]["health"], 42)
