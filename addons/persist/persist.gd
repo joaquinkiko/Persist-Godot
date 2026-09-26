@@ -2,7 +2,7 @@
 extends Node
 
 const TEMP_PATH: String = "user://save.tmp"
-const SAVE_PATH: String = "user://save.bin"
+var SAVE_PATH: String = "user://save.bin"
 
 ## Current context to assign to newly registered [PersistNode]s
 var context: StringName
@@ -143,3 +143,10 @@ func new_binary() -> void:
 	temp_file.store_buffer([])
 	temp_file.close()
 	pending_writes.clear()
+
+## Sets save / load path for binary file
+func set_save_path(path: String) -> void:
+	if !path.is_valid_filename():
+		push_error()
+		return
+	SAVE_PATH = path
