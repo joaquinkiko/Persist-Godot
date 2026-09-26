@@ -14,11 +14,12 @@ var pending_writes: Dictionary[StringName, Dictionary] # context -> path -> data
 func set_context(new_context: StringName) -> void:
 	context = new_context
 
-## Start tracking a [PersistNode]
+## Start tracking a [PersistNode], and load it's context
 func register_node(node: PersistNode) -> void:
 	if !registry.has(node.context):
 		registry[node.context] = {}
 	registry[node.context][node.index_name] = node
+	load_context(node.context)
 
 ## Stop tracking a [PersistNode], and call a [method queue_pending_write] on it
 func unregister_node(node: PersistNode) -> void:
