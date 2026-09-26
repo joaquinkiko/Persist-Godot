@@ -1,7 +1,7 @@
 ## Persist autoload for save / load management
 extends Node
 
-const TEMP_PATH: String = "user://save.tmp"
+var TEMP_PATH: String = "user://save.tmp" # Backup if can't initialize temp file
 var SAVE_PATH: String = "user://save.bin"
 
 ## Current context to assign to newly registered [PersistNode]s
@@ -10,6 +10,19 @@ var context: StringName
 var registry: Dictionary[StringName, Dictionary] # context -> path -> node
 ## Data to be flushed to temporary save file
 var pending_writes: Dictionary[StringName, Dictionary] # context -> path -> data
+
+func _enter_tree() -> void:
+	var temp_file := FileAccess.create_temp(FileAccess.WRITE, "save", "tmp", true)
+	if temp_file == null:
+		push_error("Couldn't create temporary save: %s"%temp_file.get_error())
+		return
+	TEMP_PATH = temp_file.get_path()
+	temp_file.close()
+
+func _exit_tree() -> void:
+	var error := DirAccess.remove_absolute(TEMP_PATH)
+	if error != OK:
+		push_error("Couldn't clean up temporary save file: %s"%error_string(error))
 
 func set_context(new_context: StringName) -> void:
 	context = new_context

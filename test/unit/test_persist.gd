@@ -1,7 +1,9 @@
 extends GutTest
 
-const TEST_TEMP_PATH: String = "user://save.tmp"
-const TEST_SAVE_PATH: String = "user://save.bin"
+var TEST_TEMP_PATH: String:
+	get: return Persist.TEMP_PATH
+var TEST_SAVE_PATH: String:
+	get: return Persist.SAVE_PATH
 
 var test_root: Node
 

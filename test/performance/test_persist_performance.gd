@@ -3,8 +3,10 @@ extends GutTest
 # ~1GB across 50 contexts, run manually — not for regular CI suite
 const CONTEXT_COUNT: int = 50
 const BYTES_PER_CONTEXT: int = 20 * 1024 * 1024  # 20MB * 50 = ~1GB
-const TEMP_PATH: String = "user://save.tmp"
-const SAVE_PATH: String = "user://save.bin"
+var TEMP_PATH: String:
+	get: return Persist.TEMP_PATH
+var SAVE_PATH: String:
+	get: return Persist.SAVE_PATH
 
 class FakeBlobNode extends PersistNode:
 	var blob: PackedByteArray
