@@ -200,3 +200,15 @@ func set_save_path(save_name: String) -> void:
 	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
 		DirAccess.make_dir_absolute(path.get_base_dir())
 	SAVE_PATH = path
+
+## Lists names of all save file (excluding [member _SAVE_DIR] and
+## [member _SAVE_EXTENSION]. Use [param subdir] to search a subdir
+func get_saves_list(subdir: String = "") -> PackedStringArray:
+	var dir := "%s/%s"%[_SAVE_DIR, subdir]
+	if !DirAccess.dir_exists_absolute(dir):
+		return []
+	var out: PackedStringArray = []
+	for file in DirAccess.get_files_at(dir):
+		if file.get_extension() == _SAVE_EXTENSION:
+			out.append(file.get_file().get_basename())
+	return out
