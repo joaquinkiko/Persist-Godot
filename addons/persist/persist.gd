@@ -212,3 +212,17 @@ func get_saves_list(subdir: String = "") -> PackedStringArray:
 		if file.get_extension() == _SAVE_EXTENSION:
 			out.append(file.get_file().get_basename())
 	return out
+
+## List any subdirectories containing save files.
+## Use [param subdir] to search for subdirs within a subdir
+func get_save_subdirs(subdir: String = "") -> PackedStringArray:
+	var dir := "%s/%s"%[_SAVE_DIR, subdir]
+	if !DirAccess.dir_exists_absolute(dir):
+		return []
+	var out: PackedStringArray = []
+	for _subdir in DirAccess.get_directories_at(dir):
+		for file in DirAccess.get_files_at(_subdir):
+			if file.get_extension() == _SAVE_EXTENSION:
+				out.append(_subdir)
+				continue
+	return out
