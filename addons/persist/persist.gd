@@ -2,9 +2,11 @@
 extends Node
 
 const _TEMP_FILE_PREFIX := "save"
+const _SAVE_DIR := "user://"
+const _SAVE_EXTENSION := "sav"
 
 var TEMP_PATH: String
-var SAVE_PATH: String = "user://save"
+var SAVE_PATH: String = "%s/.%s"%[_SAVE_DIR, _SAVE_EXTENSION]
 
 ## Current context to assign to newly registered [PersistNode]s
 var context: StringName
@@ -184,10 +186,16 @@ func new_binary() -> void:
 	_temp_close()
 	pending_writes.clear()
 
-## Sets save / load path for binary file
-func set_save_path(path: String) -> void:
+## Updates [member SAVE_PATH] using [member _SAVE_DIR], [param save_name],
+## and [member _SAVE_EXTENSION]. [param save_name] will have invalid
+## file characters replaced with '_'.
+func set_save_path(save_name: String) -> void:
+	save_name.validate_filename()
+	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
+	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
+		DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	if !path.is_valid_filename():
-		push_error()
+		push_error("Invlaid save path: %s"%path)
 		return
 	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
 		DirAccess.make_dir_absolute(path.get_base_dir())
