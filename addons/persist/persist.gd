@@ -68,14 +68,26 @@ func load_context(load_context_name: StringName) -> void:
 	var index := read_temp_index()
 	if not index.has(load_context_name) or not registry.has(load_context_name):
 		return
-	var file := _temp_open(FileAccess.READ)
+	
+	var file: FileAccess
+	if _temp_file != null && _temp_file.is_open():
+		file = _temp_file
+	else:
+		file = _temp_open(FileAccess.READ)
 	file.seek(index[load_context_name][0])
 	var data: Dictionary = file.get_var(false)
-	_temp_close()
 	var context_registry: Dictionary = registry[load_context_name]
 	for path in data.keys():
 		if context_registry.has(path):
 			context_registry[path].set_state(data[path])
+	_clean_up_load_context.call_deferred()
+
+## Should be called after [method load_context] to ensure proper cleanup.
+## Kept seperate so it may be called deffered, so we can load multiple contextes
+## in a single frame, and only clean up once.
+func _clean_up_load_context() -> void:
+	if _temp_file != null && _temp_file.is_open():
+		_temp_close()
 
 ## Returns a [Dictionary] of contexts and their file offset
 ## and length in our temporary save file
