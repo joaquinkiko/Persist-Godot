@@ -437,10 +437,13 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 	pending_writes.clear()
 
 ## Quickly saves with specified [param save_name] before restoring [member SAVE_PATH]
-func quicksave(save_name: String) -> void:
+## Can specify a [param image] to be saved alongside it too.
+func quicksave(save_name: String, image: Image = null) -> void:
 	var current_path := SAVE_PATH
 	set_save_path(save_name)
 	save_to_binary()
+	if image != null:
+		write_save_image(image, save_name)
 	SAVE_PATH = current_path
 
 ## Quickly loads with specified [param save_name] before restoring [member SAVE_PATH]
@@ -529,7 +532,7 @@ func get_save_image(save_name: String = "") -> ImageTexture:
 	return ImageTexture.create_from_image(image)
 
 ## Stores a quick save for current save in autosave subdir relative to save
-func autosave() -> void:
+func autosave(image: Image = null) -> void:
 	var path: String
 	# Seperate subdir (if any)
 	var split: PackedStringArray = get_save_name().split("/")
@@ -537,4 +540,4 @@ func autosave() -> void:
 	for dir in split:
 		path += dir + "/"
 	var save_name := "autosave/autosave"
-	quicksave(path + save_name)
+	quicksave(path + save_name, image)
