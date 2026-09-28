@@ -206,7 +206,6 @@ func read_temp_index() -> Dictionary:
 		return {}
 	var file := _temp_open(FileAccess.READ)
 	var index := _read_index(file, _read_preamble(file))
-	_temp_close()
 	return index
 
 ## Returns the metadata stored in our temporary save file
@@ -237,7 +236,10 @@ func flush_pending_writes(force: bool = false) -> void:
 		return
 	var old_index: Dictionary = read_temp_index()
 	var old_file: FileAccess = null
-	old_file = _temp_open(FileAccess.READ)
+	if _temp_file != null && _temp_file.is_open():
+		old_file = _temp_file
+	else:
+		old_file = _temp_open(FileAccess.READ)
 	
 	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
 	_write_head(new_file)
@@ -367,7 +369,11 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 	if old_index.is_empty():
 		return
 	
-	var old_file: FileAccess = _temp_open(FileAccess.READ)
+	var old_file: FileAccess
+	if _temp_file != null && _temp_file.is_open():
+		old_file = _temp_file
+	else:
+		old_file = _temp_open(FileAccess.READ)
 	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
 	_write_head(new_file)
 	var new_index: Dictionary = {}
@@ -397,6 +403,7 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 	
 	TEMP_PATH = new_file.get_path()
 	_temp_file = new_file
+	_temp_close()
 	pending_writes.clear()
 
 ## Quickly saves with specified [param save_name] before restoring [member SAVE_PATH]
