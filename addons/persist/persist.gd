@@ -511,13 +511,15 @@ func get_header_unix_save_time(save_name: String = "") -> float:
 	return buffer.decode_double(offset)
 
 ## Creates and save image for [param save_name]. Uses current save if left blank.
+## Leave [param image] blank to just erase image from that save
 func write_save_image(image: Image, save_name: String = "") -> void:
 	if save_name.is_empty():
 		save_name = get_save_name()
 	var path := SAVE_PATH.get_basename() + ".png"
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
-	image.save_png(path)
+	if image != null:
+		image.save_png(path)
 
 ## Returns image related to [param save_name]. Uses current save if left blank.
 func get_save_image(save_name: String = "") -> ImageTexture:
