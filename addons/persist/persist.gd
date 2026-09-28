@@ -500,3 +500,24 @@ func get_header_unix_save_time(save_name: String = "") -> float:
 		return 0.0
 	var offset: int = 48
 	return buffer.decode_double(offset)
+
+## Creates and save image for [param save_name]. Uses current save if left blank.
+func write_save_image(image: Image, save_name: String = "") -> void:
+	if save_name.is_empty():
+		save_name = get_save_name()
+	var path := SAVE_PATH.get_basename() + ".png"
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
+	image.save_png(path)
+
+## Returns image related to [param save_name]. Uses current save if left blank.
+func get_save_image(save_name: String = "") -> ImageTexture:
+	if save_name.is_empty():
+		save_name = get_save_name()
+	var path := SAVE_PATH.get_basename() + ".png"
+	if !FileAccess.file_exists(path):
+		return null
+	var image := Image.load_from_file(path)
+	if image == null:
+		return null
+	return ImageTexture.create_from_image(image)
