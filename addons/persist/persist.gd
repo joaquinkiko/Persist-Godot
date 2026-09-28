@@ -419,3 +419,7 @@ func quickload(save_name: String) -> void:
 	set_save_path(save_name)
 	load_from_binary()
 	SAVE_PATH = current_path
+
+## Gets name of current save by trimming [member _SAVE_DIR] and [member _SAVE_EXTENSION]
+func get_save_name() -> String:
+	return SAVE_PATH.trim_prefix(_SAVE_DIR).trim_suffix(_SAVE_EXTENSION)
