@@ -470,7 +470,7 @@ func get_file_by_name(save_name: String) -> FileAccess:
 ## Gets header buffer from [param save_name]. Uses current save if left blank.
 func _get_header_buffer(save_name: String = "") -> PackedByteArray:
 	if save_name.is_empty():
-		return []
+		save_name = get_save_name()
 	if save_name.is_empty():
 		save_name = get_save_name()
 	var file := get_file_by_name(save_name)
@@ -480,6 +480,8 @@ func _get_header_buffer(save_name: String = "") -> PackedByteArray:
 
 ## Returns meta-name from header of [param save_name]. Uses current save if left blank.
 func get_header_name(save_name: String = "") -> String:
+	if save_name.is_empty():
+		save_name = get_save_name()
 	var buffer := _get_header_buffer(save_name)
 	if buffer.is_empty():
 		return ""
@@ -487,6 +489,8 @@ func get_header_name(save_name: String = "") -> String:
 
 ## Returns game version from header of [param save_name]. Uses current save if left blank.
 func get_header_game_version(save_name: String = "") -> String:
+	if save_name.is_empty():
+		save_name = get_save_name()
 	var buffer := _get_header_buffer(save_name)
 	if buffer.is_empty():
 		return ""
@@ -495,6 +499,8 @@ func get_header_game_version(save_name: String = "") -> String:
 
 ## Returns save time from header of [param save_name]. Uses current save if left blank.
 func get_header_unix_save_time(save_name: String = "") -> float:
+	if save_name.is_empty():
+		save_name = get_save_name()
 	var buffer := _get_header_buffer(save_name)
 	if buffer.is_empty():
 		return 0.0
