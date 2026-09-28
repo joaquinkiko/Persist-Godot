@@ -398,3 +398,17 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 	TEMP_PATH = new_file.get_path()
 	_temp_file = new_file
 	pending_writes.clear()
+
+## Quickly saves with specified [param save_name] before restoring [member SAVE_PATH]
+func quicksave(save_name: String) -> void:
+	var current_path := SAVE_PATH
+	set_save_path(save_name)
+	save_to_binary()
+	SAVE_PATH = current_path
+
+## Quickly loads with specified [param save_name] before restoring [member SAVE_PATH]
+func quickload(save_name: String) -> void:
+	var current_path := SAVE_PATH
+	set_save_path(save_name)
+	load_from_binary()
+	SAVE_PATH = current_path
