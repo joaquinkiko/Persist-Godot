@@ -132,7 +132,10 @@ func _read_preamble(file: FileAccess) -> Dictionary:
 
 ## Reads the header of [param file]. The header size is determined by
 ## [param version]. Leaves the file positioned at the start of the metadata.
-func read_header(file: FileAccess, version: int) -> PackedByteArray:
+func read_header(file: FileAccess) -> PackedByteArray:
+	var version: int = _parse_preamble(
+		file.get_buffer(_PREAMBLE_SIZE), file.get_length()
+		).get("version", 0)
 	if not _HEADER_SIZES.has(version):
 		push_error("Unsupported save protocol version: %s"%version)
 		return PackedByteArray()
@@ -218,7 +221,7 @@ func read_temp_metadata() -> Dictionary:
 		_temp_close()
 		return {}
 	var index := _read_index(file, preamble)
-	read_header(file, preamble["version"])
+	read_header(file)
 	var start: int = file.get_position()
 	# Metadata runs until the first context (or the index if there are none)
 	var end: int = preamble["index_position"]
@@ -436,3 +439,14 @@ func get_file_by_name(save_name: String) -> FileAccess:
 	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.READ, COMPRESSION_MODE)
 	save_file.close()
 	return save_file
+
+## Gets header buffer from [param save_name]. Uses current save if left blank.
+func _get_header_buffer(save_name: String = "") -> PackedByteArray:
+	if save_name.is_empty():
+		return []
+	if save_name.is_empty():
+		save_name = get_save_name()
+	var file := get_file_by_name(save_name)
+	if file == null:
+		return []
+	return read_header(file)
