@@ -226,3 +226,46 @@ func get_save_subdirs(subdir: String = "") -> PackedStringArray:
 				out.append(_subdir)
 				continue
 	return out
+
+## Erases all [param contexts_to_erase] from temporary save file.
+## For more precise handling may use [param indexes_to_erase] to
+## specify {context : indices} to erase.
+func erase_from_temp(contexts_to_erase: Array[StringName] = [], 
+					indexes_to_erase: Dictionary[StringName, PackedStringArray] = {}) -> void:
+	var old_index: Dictionary = read_temp_index()
+	if old_index.is_empty():
+		return
+	
+	var old_file: FileAccess = _temp_open(FileAccess.READ)
+	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
+	var new_index: Dictionary = {}
+	# Write modified version to new temp file
+	for context_name in old_index.keys():
+		# Skip entirely erased contexts
+		if context_name in contexts_to_erase:
+			continue
+		# Find this context in the file
+		var offset: int = old_index[context_name][0]
+		var length: int = old_index[context_name][1]
+		old_file.seek(offset)
+		var context_data: Dictionary = old_file.get_var(false)
+		# Filter indexes within this context if specified
+		if indexes_to_erase.has(context_name):
+			for index_key in indexes_to_erase[context_name]:
+				context_data.erase(index_key)
+		# If this erased all context data we can skip rewriting it
+		if context_data.is_empty():
+			continue
+		var start_position: int = new_file.get_position()
+		new_file.store_var(context_data, false)
+		new_index[context_name] = [start_position, new_file.get_position() - start_position]
+	_temp_close()
+	
+	var index_position: int = new_file.get_position()
+	new_file.store_var(new_index, false)
+	new_file.store_64(index_position)
+	new_file.close()
+	
+	TEMP_PATH = new_file.get_path()
+	_temp_file = new_file
+	pending_writes.clear()

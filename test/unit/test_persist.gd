@@ -141,3 +141,83 @@ func test_full_save_and_load_round_trip() -> void:
 	Persist.load_context(&"context_a")
 	assert_eq(new_node.get("health"), 123)
 	new_node.free()
+
+func test_erase_from_temp_removes_entire_context() -> void:
+	var node_a: PersistNode = _make_node(&"context_a", 10)
+	var node_b: PersistNode = _make_node(&"context_b", 20)
+	test_root.remove_child(node_a)
+	test_root.remove_child(node_b)
+	Persist.flush_pending_writes()
+	
+	Persist.erase_from_temp([&"context_a"])
+	var index: Dictionary = Persist.read_temp_index()
+	assert_false(index.has(&"context_a"))
+	assert_true(index.has(&"context_b"))
+	node_a.free()
+	node_b.free()
+
+func test_erase_from_temp_removes_specific_indicies() -> void:
+	var node_a: PersistNode = _make_node(&"context_a", 10, "node_a")
+	var node_b: PersistNode = _make_node(&"context_a", 20, "node_b")
+	test_root.remove_child(node_a)
+	test_root.remove_child(node_b)
+	Persist.flush_pending_writes()
+	
+	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_a": [node_a.index_name]}
+	Persist.erase_from_temp([], to_erase)
+	
+	var index: Dictionary = Persist.read_temp_index()
+	assert_true(index.has(&"context_a"))
+	Persist.load_context(&"context_a")
+	assert_false(Persist.registry[&"context_a"].has(node_a.index_name))
+	node_a.free()
+	node_b.free()
+
+func test_erase_from_temp_preserves_other_indicies() -> void:
+	var node_a: PersistNode = _make_node(&"context_a", 10, "node_a")
+	var node_b: PersistNode = _make_node(&"context_a", 20, "node_b")
+	test_root.remove_child(node_a)
+	test_root.remove_child(node_b)
+	Persist.flush_pending_writes()
+	
+	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_a": [node_a.index_name]}
+	Persist.erase_from_temp([], to_erase)
+	
+	test_root.add_child(node_b)
+	node_b.set("health", 0)
+	Persist.load_context(&"context_a")
+	assert_eq(node_b.get("health"), 20)
+	node_a.free()
+	node_b.free()
+
+func test_erase_from_temp_removes_empty_contexts() -> void:
+	var node_a: PersistNode = _make_node(&"context_a", 10, "node_a")
+	test_root.remove_child(node_a)
+	Persist.flush_pending_writes()
+	
+	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_a": [node_a.index_name]}
+	Persist.erase_from_temp([], to_erase)
+	
+	var index: Dictionary = Persist.read_temp_index()
+	assert_false(index.has(&"context_a"))
+	node_a.free()
+
+func test_erase_from_temp_multiple_contexts_and_indicies() -> void:
+	var node_a: PersistNode = _make_node(&"context_a", 10, "node_a")
+	var node_b: PersistNode = _make_node(&"context_b", 20, "node_b")
+	var node_c: PersistNode = _make_node(&"context_c", 30, "node_c")
+	test_root.remove_child(node_a)
+	test_root.remove_child(node_b)
+	test_root.remove_child(node_c)
+	Persist.flush_pending_writes()
+	
+	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_b": [node_b.index_name]}
+	Persist.erase_from_temp([&"context_a"], to_erase)
+	
+	var index: Dictionary = Persist.read_temp_index()
+	assert_false(index.has(&"context_a"))
+	assert_false(index.has(&"context_b"))
+	assert_true(index.has(&"context_c"))
+	node_a.free()
+	node_b.free()
+	node_c.free()
