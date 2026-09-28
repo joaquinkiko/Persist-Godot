@@ -21,7 +21,8 @@ enum Type {
 	QUATERNION = TYPE_QUATERNION,
 	TRANSFORM2D = TYPE_TRANSFORM2D,
 	TRANSFORM3D = TYPE_TRANSFORM3D,
-	PACKED_INT_ARRAY = TYPE_PACKED_INT32_ARRAY,
+	PACKED_INT32_ARRAY = TYPE_PACKED_INT32_ARRAY,
+	PACKED_INT64_ARRAY = TYPE_PACKED_INT64_ARRAY,
 	PACKED_FLOAT32_ARRAY = TYPE_PACKED_FLOAT32_ARRAY,
 	PACKED_FLOAT64_ARRAY = TYPE_PACKED_FLOAT64_ARRAY,
 	PACKED_STRING_ARRAY = TYPE_PACKED_STRING_ARRAY,
@@ -107,8 +108,12 @@ static func encode_variant(value) -> PackedByteArray:
 				basis.z.x, basis.z.y, basis.z.z,
 				value.origin.x, value.origin.y, value.origin.z,
 			]))
-		TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY:
-			out.append(Type.PACKED_INT_ARRAY)
+		TYPE_PACKED_INT32_ARRAY:
+			out.append(Type.PACKED_INT32_ARRAY)
+			out.append_array(encode_varint(value.size()))
+			out.append_array(encode_ints(Array(value)))
+		TYPE_PACKED_INT64_ARRAY:
+			out.append(Type.PACKED_INT64_ARRAY)
 			out.append_array(encode_varint(value.size()))
 			out.append_array(encode_ints(Array(value)))
 		TYPE_PACKED_FLOAT32_ARRAY:
@@ -217,18 +222,22 @@ static func decode_variant(bytes: PackedByteArray, offset: int) -> Array:
 				Vector3(values[6], values[7], values[8]),
 			)
 			return [Transform3D(basis, Vector3(values[9], values[10], values[11])), result[1]]
-		Type.PACKED_INT_ARRAY:
+		Type.PACKED_INT32_ARRAY:
 			var size_result := decode_varint(bytes, offset)
 			var result := decode_ints(bytes, size_result[1], size_result[0])
 			return [PackedInt32Array(result[0]), result[1]]
+		Type.PACKED_INT64_ARRAY:
+			var size_result := decode_varint(bytes, offset)
+			var result := decode_ints(bytes, size_result[1], size_result[0])
+			return [PackedInt64Array(result[0]), result[1]]
 		Type.PACKED_FLOAT32_ARRAY:
 			var size_result := decode_varint(bytes, offset)
 			var result := decode_floats(bytes, size_result[1], size_result[0])
-			return [PackedInt32Array(result[0]), result[1]]
+			return [PackedFloat32Array(result[0]), result[1]]
 		Type.PACKED_FLOAT64_ARRAY:
 			var size_result := decode_varint(bytes, offset)
 			var result := decode_floats(bytes, size_result[1], size_result[0])
-			return [PackedInt32Array(result[0]), result[1]]
+			return [PackedFloat32Array(result[0]), result[1]]
 		Type.PACKED_STRING_ARRAY:
 			var size_result := decode_varint(bytes, offset)
 			var position: int = size_result[1]
@@ -256,7 +265,7 @@ static func encode_dictionary(dict: Dictionary) -> PackedByteArray:
 		body.append_array(encode_variant(key))
 		body.append_array(encode_variant(dict[key]))
 		count += 1
-	var out := PackedByteArray([Type.DICTIONARY])
+	var out := PackedByteArray()
 	out.append_array(encode_varint(count))
 	out.append_array(body)
 	return out
