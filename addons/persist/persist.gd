@@ -5,6 +5,18 @@ const _TEMP_FILE_PREFIX := "save"
 const _SAVE_DIR := "user://"
 const _SAVE_EXTENSION := "sav"
 
+## Used at start of file to confirm this is a valid filetype
+const _MAGIC := "GDT"
+## Current protocol version in use
+const PROTOCOL_VERSION := 0
+## Size in bytes of the header for each protocol version
+const _HEADER_SIZES := {0: 0}
+## [member _MAGIC] size + 1 byte for PROTOCOL
+const _INDEX_POINTER_OFFSET := 4
+## Stores a u32 int
+const _INDEX_POINTER_SIZE := 4
+const _PREAMBLE_SIZE := _INDEX_POINTER_OFFSET + _INDEX_POINTER_SIZE
+
 var TEMP_PATH: String
 var SAVE_PATH: String = "%s/.%s"%[_SAVE_DIR, _SAVE_EXTENSION]
 
@@ -14,6 +26,9 @@ var context: StringName
 var registry: Dictionary[StringName, Dictionary] # context -> path -> node
 ## Data to be flushed to temporary save file
 var pending_writes: Dictionary[StringName, Dictionary] # context -> path -> data
+## Free-form data stored alongside save-data fully defined by user
+## Loaded by [method load_from_binary] and written on every flush
+var metadata: Dictionary
 
 ## Temporary save file for read/write without effecting permanent save
 var _temp_file: FileAccess
@@ -77,7 +92,8 @@ func load_context(load_context_name: StringName) -> void:
 	else:
 		file = _temp_open(FileAccess.READ)
 	file.seek(index[load_context_name][0])
-	var data: Dictionary = file.get_var(false)
+	var bytes: PackedByteArray = file.get_buffer(index[load_context_name][1])
+	var data: Dictionary = PersistEncoder.decode_dictionary(bytes, 0)[0]
 	var context_registry: Dictionary = registry[load_context_name]
 	for path in data.keys():
 		if context_registry.has(path):
@@ -91,31 +107,138 @@ func _clean_up_load_context() -> void:
 	if _temp_file != null && _temp_file.is_open():
 		_temp_close()
 
+## Validates the first [constant _PREAMBLE_SIZE] bytes of a save file.
+## Returns {"version": int, "index_position": int}, or an empty [Dictionary]
+## if the magic phrase, version, or index position is invalid
+func _parse_preamble(bytes: PackedByteArray, file_length: int) -> Dictionary:
+	if bytes.size() < _PREAMBLE_SIZE:
+		return {}
+	if bytes.slice(0, _MAGIC.length()).get_string_from_ascii() != _MAGIC:
+		return {}
+	var version: int = bytes[_MAGIC.length()]
+	if not _HEADER_SIZES.has(version):
+		return {}
+	var index_position: int = bytes.decode_u32(_INDEX_POINTER_OFFSET)
+	if index_position < _PREAMBLE_SIZE + _HEADER_SIZES[version] or index_position >= file_length:
+		return {}
+	return {"version": version, "index_position": index_position}
+
+## Reads and validates the preamble of [param file]
+func _read_preamble(file: FileAccess) -> Dictionary:
+	file.seek(0)
+	return _parse_preamble(file.get_buffer(_PREAMBLE_SIZE), file.get_length())
+
+## Reads the header of [param file]. The header size is determined by
+## [param version]. Leaves the file positioned at the start of the metadata.
+func read_header(file: FileAccess, version: int) -> PackedByteArray:
+	if not _HEADER_SIZES.has(version):
+		push_error("Unsupported save protocol version: %s"%version)
+		return PackedByteArray()
+	file.seek(_PREAMBLE_SIZE)
+	return file.get_buffer(_HEADER_SIZES[version])
+
+## Builds the header for the current [constant PROTOCOL_VERSION].
+func _build_header() -> PackedByteArray:
+	var header := PackedByteArray()
+	header.resize(_HEADER_SIZES[PROTOCOL_VERSION])
+	match PROTOCOL_VERSION:
+		1:
+			pass # Unimplemented
+	return header
+
+## Reads the context index from [param file]. Returns {context: [offset, length]}.
+func _read_index(file: FileAccess, preamble: Dictionary) -> Dictionary:
+	if preamble.is_empty():
+		return {}
+	var index_position: int = preamble["index_position"]
+	file.seek(index_position)
+	var bytes := file.get_buffer(file.get_length() - index_position)
+	if bytes.is_empty():
+		return {}
+	
+	var count_result := PersistEncoder.decode_varint(bytes, 0)
+	var position: int = count_result[1]
+	var offsets: Dictionary = {}
+	for i in count_result[0]:
+		var name_result := PersistEncoder.decode_string(bytes, position)
+		var offset_result := PersistEncoder.decode_varint(bytes, name_result[1])
+		offsets[StringName(name_result[0])] = offset_result[0]
+		position = offset_result[1]
+	
+	var sorted_offsets: Array = offsets.values()
+	sorted_offsets.sort()
+	var index: Dictionary = {}
+	for context_name in offsets.keys():
+		var offset: int = offsets[context_name]
+		var next: int = sorted_offsets.find(offset) + 1
+		var end: int = sorted_offsets[next] if next < sorted_offsets.size() else index_position
+		index[context_name] = [offset, end - offset]
+	return index
+
+## Writes magic, version, a placeholder index position, header, and metadata.
+## Must be followed by the contexts, then [method _finalize_file].
+func _write_head(file: FileAccess) -> void:
+	file.store_buffer(_MAGIC.to_ascii_buffer())
+	file.store_8(PROTOCOL_VERSION)
+	file.store_32(0) # Placeholder till we determine final size
+	file.store_buffer(_build_header())
+	file.store_buffer(PersistEncoder.encode_dictionary(metadata))
+
+## Writes the context index, patches the index position written by
+## [method _write_head], and closes [param file].
+## [param offsets] is {context: absolute offset}.
+func _finalize_file(file: FileAccess, offsets: Dictionary) -> void:
+	var index_position: int = file.get_position()
+	file.store_buffer(PersistEncoder.encode_varint(offsets.size()))
+	for context_name in offsets.keys():
+		file.store_buffer(PersistEncoder.encode_string(String(context_name)))
+		file.store_buffer(PersistEncoder.encode_varint(offsets[context_name]))
+	file.seek(_INDEX_POINTER_OFFSET)
+	file.store_32(index_position)
+	file.close()
+
 ## Returns a [Dictionary] of contexts and their file offset
 ## and length in our temporary save file
 func read_temp_index() -> Dictionary:
 	if not FileAccess.file_exists(TEMP_PATH):
 		return {}
 	var file := _temp_open(FileAccess.READ)
-	if file.get_length() < 8:
-		_temp_close()
-		return {}
-	file.seek(file.get_length() - 8)
-	var index_position: int = file.get_64()
-	file.seek(index_position)
-	var index: Dictionary = file.get_var(false)
+	var index := _read_index(file, _read_preamble(file))
 	_temp_close()
 	return index
 
+## Returns the metadata stored in our temporary save file
+func read_temp_metadata() -> Dictionary:
+	if not FileAccess.file_exists(TEMP_PATH):
+		return {}
+	var file := _temp_open(FileAccess.READ)
+	var preamble := _read_preamble(file)
+	if preamble.is_empty():
+		_temp_close()
+		return {}
+	var index := _read_index(file, preamble)
+	read_header(file, preamble["version"])
+	var start: int = file.get_position()
+	# Metadata runs until the first context (or the index if there are none)
+	var end: int = preamble["index_position"]
+	for entry in index.values():
+		end = mini(end, entry[0])
+	var bytes := file.get_buffer(end - start)
+	_temp_close()
+	if bytes.is_empty():
+		return {}
+	return PersistEncoder.decode_dictionary(bytes, 0)[0]
+
 ## Flushes data from [member pending_writes] to our temporary save file
-func flush_pending_writes() -> void:
-	if pending_writes.is_empty():
+func flush_pending_writes(force: bool = false) -> void:
+	if pending_writes.is_empty() and not force:
 		return
 	var old_index: Dictionary = read_temp_index()
 	var old_file: FileAccess = null
 	old_file = _temp_open(FileAccess.READ)
 	
 	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
+	_write_head(new_file)
 	var new_index: Dictionary = {}
 	
 	for context_name in old_index.keys():
@@ -125,21 +248,17 @@ func flush_pending_writes() -> void:
 		var length: int = old_index[context_name][1]
 		old_file.seek(offset)
 		var raw_bytes: PackedByteArray = old_file.get_buffer(length)
-		new_index[context_name] = [new_file.get_position(), length]
+		new_index[context_name] = new_file.get_position()
 		new_file.store_buffer(raw_bytes)
 	
 	if old_file:
 		_temp_close()
 	
 	for context_name in pending_writes.keys():
-		var start_position: int = new_file.get_position()
-		new_file.store_var(pending_writes[context_name], false)
-		new_index[context_name] = [start_position, new_file.get_position() - start_position]
+		new_index[context_name] = new_file.get_position()
+		new_file.store_buffer(PersistEncoder.encode_dictionary(pending_writes[context_name]))
 	
-	var index_position: int = new_file.get_position()
-	new_file.store_var(new_index, false)
-	new_file.store_64(index_position)
-	new_file.close()
+	_finalize_file(new_file, new_index)
 	
 	#DirAccess.rename_absolute(TEMP_PATH + ".new", TEMP_PATH)
 	TEMP_PATH = new_file.get_path()
@@ -153,18 +272,26 @@ func flush_all() -> void:
 			if not pending_writes.has(context_name):
 				pending_writes[context_name] = {}
 			pending_writes[context_name][path] = registry[context_name][path].get_state()
-	flush_pending_writes()
+	flush_pending_writes(true)
 
-## Loads specified file
+## Loads specified file. If the file has an invalid magic phrase, an
+## unsupported version, or a bad index position, an error is pushed and
+## a blank file is loaded instead
 func load_from_binary() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
 		return
 	var save_file := FileAccess.open(SAVE_PATH, FileAccess.READ)
 	var bytes: PackedByteArray = save_file.get_buffer(save_file.get_length())
 	save_file.close()
+	if _parse_preamble(bytes, bytes.size()).is_empty():
+		push_error("Invalid or unsupported save file, loading blank file: %s"%SAVE_PATH)
+		new_binary()
+		return
 	var temp_file := _temp_open(FileAccess.WRITE)
 	temp_file.store_buffer(bytes)
+	temp_file.close() # Must be flushed before metadata is read back
 	_temp_close()
+	metadata = read_temp_metadata()
 	pending_writes.clear()
 
 ## Saves currrent file
@@ -181,8 +308,10 @@ func save_to_binary() -> void:
 
 ## Loads a new, blank file
 func new_binary() -> void:
+	metadata = {}
 	var temp_file := _temp_open(FileAccess.WRITE)
-	temp_file.store_buffer([])
+	_write_head(temp_file)
+	_finalize_file(temp_file, {})
 	_temp_close()
 	pending_writes.clear()
 
@@ -238,6 +367,7 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 	
 	var old_file: FileAccess = _temp_open(FileAccess.READ)
 	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
+	_write_head(new_file)
 	var new_index: Dictionary = {}
 	# Write modified version to new temp file
 	for context_name in old_index.keys():
@@ -248,7 +378,8 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 		var offset: int = old_index[context_name][0]
 		var length: int = old_index[context_name][1]
 		old_file.seek(offset)
-		var context_data: Dictionary = old_file.get_var(false)
+		var context_bytes: PackedByteArray = old_file.get_buffer(length)
+		var context_data: Dictionary = PersistEncoder.decode_dictionary(context_bytes, 0)[0]
 		# Filter indexes within this context if specified
 		if indexes_to_erase.has(context_name):
 			for index_key in indexes_to_erase[context_name]:
@@ -256,15 +387,11 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 		# If this erased all context data we can skip rewriting it
 		if context_data.is_empty():
 			continue
-		var start_position: int = new_file.get_position()
-		new_file.store_var(context_data, false)
-		new_index[context_name] = [start_position, new_file.get_position() - start_position]
+		new_index[context_name] = new_file.get_position()
+		new_file.store_buffer(PersistEncoder.encode_dictionary(context_data))
 	_temp_close()
 	
-	var index_position: int = new_file.get_position()
-	new_file.store_var(new_index, false)
-	new_file.store_64(index_position)
-	new_file.close()
+	_finalize_file(new_file, new_index)
 	
 	TEMP_PATH = new_file.get_path()
 	_temp_file = new_file
