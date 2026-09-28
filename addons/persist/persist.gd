@@ -521,3 +521,14 @@ func get_save_image(save_name: String = "") -> ImageTexture:
 	if image == null:
 		return null
 	return ImageTexture.create_from_image(image)
+
+## Stores a quick save for current save in autosave subdir relative to save
+func autosave() -> void:
+	var path: String
+	# Seperate subdir (if any)
+	var split: PackedStringArray = get_save_name().split("/")
+	if split.size() > 0: split.remove_at(split.size() - 1)
+	for dir in split:
+		path += dir + "/"
+	var save_name := "autosave/autosave"
+	quicksave(path + save_name)
