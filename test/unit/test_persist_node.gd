@@ -17,6 +17,7 @@ func before_each() -> void:
 	test_node.root = test_node
 	test_node.properties = ["health"]
 	test_node.set("health", 0)
+	autofree(test_node)
 
 func test_enter_tree_assigns_loaded_context() -> void:
 	test_root.add_child(test_node)
