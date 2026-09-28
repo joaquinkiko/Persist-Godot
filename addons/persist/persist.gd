@@ -16,6 +16,8 @@ const _INDEX_POINTER_OFFSET := 4
 ## Stores a u32 int
 const _INDEX_POINTER_SIZE := 4
 const _PREAMBLE_SIZE := _INDEX_POINTER_OFFSET + _INDEX_POINTER_SIZE
+## Compression is only used on permanent saves
+const COMPRESSION_MODE := FileAccess.COMPRESSION_ZSTD
 
 var TEMP_PATH: String
 var SAVE_PATH: String = "%s/.%s"%[_SAVE_DIR, _SAVE_EXTENSION]
@@ -280,7 +282,7 @@ func flush_all() -> void:
 func load_from_binary() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
 		return
-	var save_file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.READ, COMPRESSION_MODE)
 	var bytes: PackedByteArray = save_file.get_buffer(save_file.get_length())
 	save_file.close()
 	if _parse_preamble(bytes, bytes.size()).is_empty():
@@ -302,7 +304,7 @@ func save_to_binary() -> void:
 	var temp_file := _temp_open(FileAccess.READ)
 	var bytes: PackedByteArray = temp_file.get_buffer(temp_file.get_length())
 	_temp_close()
-	var save_file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.WRITE, COMPRESSION_MODE)
 	save_file.store_buffer(bytes)
 	save_file.close()
 
