@@ -313,10 +313,10 @@ static func decode_varint(bytes: PackedByteArray, offset: int) -> Array:
 	var value: int = (result >> 1) ^ -(result & 1)
 	return [value, position]
 
-## Encode UTF-8 string followed by a null terminator.
+## Encode UTF-8 string followed by ETX terminator.
 static func encode_string(text: String) -> PackedByteArray:
-	if text.contains(char(0)): # Replace any null terminators already in string
-		text = text.replace(char(0), "")
+	if text.contains(char(3)): # Replace any null terminators already in string
+		text = text.replace(char(3), "")
 	var out := text.to_utf8_buffer()
 	out.append(0)
 	return out
