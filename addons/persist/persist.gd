@@ -10,7 +10,10 @@ const _MAGIC := "GDT"
 ## Current protocol version in use
 const PROTOCOL_VERSION := 0
 ## Size in bytes of the header for each protocol version
-const _HEADER_SIZES := {0: 0}
+const _HEADER_SIZES := {
+	0: 0,
+	1: 64,
+	}
 ## [member _MAGIC] size + 1 byte for PROTOCOL
 const _INDEX_POINTER_OFFSET := 4
 ## Stores a u32 int
@@ -28,6 +31,8 @@ var context: StringName
 var registry: Dictionary[StringName, Dictionary] # context -> path -> node
 ## Data to be flushed to temporary save file
 var pending_writes: Dictionary[StringName, Dictionary] # context -> path -> data
+## Meta-name of current save
+var meta_name: String
 ## Free-form data stored alongside save-data fully defined by user
 ## Loaded by [method load_from_binary] and written on every flush
 var metadata: Dictionary
@@ -148,6 +153,28 @@ func _build_header() -> PackedByteArray:
 	header.resize(_HEADER_SIZES[PROTOCOL_VERSION])
 	match PROTOCOL_VERSION:
 		1:
+			var buffer := PackedByteArray()
+			# Meta name
+			# size 32 (excess cut off)
+			# Offset 0
+			buffer.append_array(PersistEncoder.encode_string(meta_name))
+			buffer.resize(32)
+			buffer[buffer.size() - 1] = int(char(3)) # Force string terminator
+			# Project Version
+			# size 16 (excess cut off)
+			# Offset 32
+			buffer.append_array(PersistEncoder.encode_string(
+				ProjectSettings.get_setting("application/config/version")))
+			buffer.resize(48)
+			buffer[buffer.size() - 1] = int(char(3)) # Force string terminator
+			# Unix Time
+			# size 4
+			# Offset 48
+			buffer.resize(buffer.size() - 4)
+			buffer.encode_double(Time.get_unix_time_from_system(), buffer.size() - 4)
+			# Unused Padding
+			buffer.resize(64)
+		_:
 			pass # Unimplemented
 	return header
 
@@ -450,3 +477,26 @@ func _get_header_buffer(save_name: String = "") -> PackedByteArray:
 	if file == null:
 		return []
 	return read_header(file)
+
+## Returns meta-name from header of [param save_name]. Uses current save if left blank.
+func get_header_name(save_name: String = "") -> String:
+	var buffer := _get_header_buffer(save_name)
+	if buffer.is_empty():
+		return ""
+	return PersistEncoder.decode_string(buffer, 0)[0]
+
+## Returns game version from header of [param save_name]. Uses current save if left blank.
+func get_header_game_version(save_name: String = "") -> String:
+	var buffer := _get_header_buffer(save_name)
+	if buffer.is_empty():
+		return ""
+	var offset: int = 32
+	return PersistEncoder.decode_string(buffer, offset)[0]
+
+## Returns save time from header of [param save_name]. Uses current save if left blank.
+func get_header_unix_save_time(save_name: String = "") -> float:
+	var buffer := _get_header_buffer(save_name)
+	if buffer.is_empty():
+		return 0.0
+	var offset: int = 48
+	return buffer.decode_double(offset)
