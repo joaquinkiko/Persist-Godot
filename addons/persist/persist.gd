@@ -423,3 +423,16 @@ func quickload(save_name: String) -> void:
 ## Gets name of current save by trimming [member _SAVE_DIR] and [member _SAVE_EXTENSION]
 func get_save_name() -> String:
 	return SAVE_PATH.trim_prefix(_SAVE_DIR).trim_suffix(_SAVE_EXTENSION)
+
+## Returns [FileAccess] for save file specified by [param save_name]
+func get_file_by_name(save_name: String) -> FileAccess:
+	if !save_name.is_valid_filename():
+		return null
+	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
+	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
+		return null
+	if not FileAccess.file_exists(path):
+		return null
+	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.READ, COMPRESSION_MODE)
+	save_file.close()
+	return save_file
