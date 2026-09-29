@@ -31,6 +31,9 @@ enum Type {
 
 const _CONTINUE_BIT := 0x80
 const _PAYLOAD_MASK := 0x7F
+const _SHIFT7_MASK := 0x01FFFFFFFFFFFFFF   # 57 bits
+const _SHIFT1_MASK := 0x7FFFFFFFFFFFFFFF   # 63 bits
+const _MAX_VARINT_BYTES := 10
 
 const _FLAG_SINGLE := 0
 const _FLAG_DOUBLE := 1
@@ -305,7 +308,7 @@ static func encode_varint(value: int) -> PackedByteArray:
 	var bytes := PackedByteArray()
 	while true:
 		var byte: int = zigzag & _PAYLOAD_MASK
-		zigzag >>= 7
+		zigzag = (zigzag >> 7) & _SHIFT7_MASK
 		if zigzag != 0:
 			bytes.append(byte | _CONTINUE_BIT)
 		else:
@@ -319,17 +322,16 @@ static func decode_varint(bytes: PackedByteArray, offset: int) -> Array:
 	var shift: int = 0
 	var position := offset
 	while true:
+		if position >= bytes.size() or shift >= _MAX_VARINT_BYTES * 7:
+			push_error("Invalid varint format!")
+			return [0, -1]
 		var byte: int = bytes[position]
 		position += 1
 		result |= (byte & _PAYLOAD_MASK) << shift
 		if byte & _CONTINUE_BIT == 0:
 			break
 		shift += 7
-		if shift >= 64:
-			push_error("Error decoding end of varint!")
-			position = -1 # Signals error
-			break
-	var value: int = (result >> 1) ^ -(result & 1)
+	var value: int = ((result >> 1) & _SHIFT1_MASK) ^ -(result & 1)
 	return [value, position]
 
 ## Encode UTF-8 string followed by ETX terminator.
