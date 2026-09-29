@@ -554,6 +554,16 @@ func autosave(image: Image = null) -> void:
 	quicksave(path + save_name, image)
 
 ## Returns true if save exists
-func save_exists(save_name: String) -> bool:
+func save_exists(save_name: String = "") -> bool:
+	if save_name.is_empty():
+		save_name = get_save_name()
 	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
 	return FileAccess.file_exists(path)
+
+## Deletes specified save
+func erase_save(save_name: String = "") -> void:
+	if save_name.is_empty():
+		save_name = get_save_name()
+	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path)
