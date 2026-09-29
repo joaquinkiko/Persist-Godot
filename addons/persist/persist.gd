@@ -552,3 +552,8 @@ func autosave(image: Image = null) -> void:
 		path += dir + "/"
 	var save_name := "autosave/autosave"
 	quicksave(path + save_name, image)
+
+## Returns true if save exists
+func save_exists(save_name: String) -> bool:
+	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
+	return FileAccess.file_exists(path)
