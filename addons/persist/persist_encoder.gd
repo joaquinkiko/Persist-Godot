@@ -141,9 +141,12 @@ static func encode_variant(value) -> PackedByteArray:
 	return out
 
 ## Decodes a tagged variant starting at [param offset]. Returns [value, next_offset].
+## Returns offset of -1 if error occured while reading.
 static func decode_variant(bytes: PackedByteArray, offset: int) -> Array:
 	var tag: int = bytes[offset]
 	offset += 1
+	if offset >= bytes.size():
+		return [null, -1]
 	match tag:
 		Type.NIL:
 			return [null, offset]
@@ -178,8 +181,11 @@ static func decode_variant(bytes: PackedByteArray, offset: int) -> Array:
 			var array_out := []
 			for i in count:
 				var item_result := decode_variant(bytes, position)
-				array_out.append(item_result[0])
 				position = item_result[1]
+				if position == -1:
+					push_error("Array cut off early!")
+					break
+				array_out.append(item_result[0])
 			return [array_out, position]
 		Type.DICTIONARY:
 			return decode_dictionary(bytes, offset)
@@ -244,12 +250,15 @@ static func decode_variant(bytes: PackedByteArray, offset: int) -> Array:
 			var strings := PackedStringArray()
 			for index in size_result[0]:
 				var string_result := decode_string(bytes, position)
+				if position == -1:
+					push_error("String array cut off early!")
+					break
 				strings.append(string_result[0])
 				position = string_result[1]
 			return [strings, position]
 		_:
-			# Unknowns are silently skipped
-			return [null, offset]
+			push_error("Encountered unknown variant encoding tag: %s"%tag)
+			return [null, -1]
 
 ## Encodes a dictionary
 static func encode_dictionary(dict: Dictionary) -> PackedByteArray:
@@ -279,8 +288,14 @@ static func decode_dictionary(bytes: PackedByteArray, offset: int) -> Array:
 	for i in count:
 		var key_result := decode_variant(bytes, position)
 		position = key_result[1]
+		if position == -1:
+			push_error("Dictionary cut off early!")
+			break
 		var value_result := decode_variant(bytes, position)
 		position = value_result[1]
+		if position == -1:
+			push_error("Dictionary cut off early!")
+			break
 		result[key_result[0]] = value_result[0]
 	return [result, position]
 
@@ -310,6 +325,10 @@ static func decode_varint(bytes: PackedByteArray, offset: int) -> Array:
 		if byte & _CONTINUE_BIT == 0:
 			break
 		shift += 7
+		if shift >= 64:
+			push_error("Error decoding end of varint!")
+			position = -1 # Signals error
+			break
 	var value: int = (result >> 1) ^ -(result & 1)
 	return [value, position]
 
@@ -325,7 +344,8 @@ static func encode_string(text: String) -> PackedByteArray:
 static func decode_string(bytes: PackedByteArray, offset: int) -> Array:
 	var terminator_position := bytes.find(0, offset)
 	if terminator_position == -1:
-		return ["", bytes.size()]
+		push_error("Unable to locate string terminator")
+		return ["", -1]
 	var slice := bytes.slice(offset, terminator_position)
 	return [slice.get_string_from_utf8(), terminator_position + 1]
 
@@ -352,6 +372,10 @@ static func decode_floats(bytes: PackedByteArray, offset: int, count: int) -> Ar
 	var position := offset + 1
 	var values := []
 	for index in count:
+		if index + byte_width > bytes.size():
+			push_error("Float array was cut off early!")
+			position = -1 # Error indicator
+			break
 		if use_double:
 			values.append(bytes.decode_double(position))
 		else:
@@ -370,6 +394,10 @@ static func decode_ints(bytes: PackedByteArray, offset: int, count: int) -> Arra
 	var values := []
 	var position := offset
 	for index in count:
+		if index + 1 > bytes.size(): # Minimum varint size
+			push_error("Int array was cut off early!")
+			position = -1 # Error indicator
+			break
 		var result := decode_varint(bytes, position)
 		values.append(result[0])
 		position = result[1]
