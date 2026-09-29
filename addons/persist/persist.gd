@@ -44,17 +44,27 @@ func _exit_tree() -> void:
 	_temp_file = null
 
 func _temp_create() -> void:
+	if _temp_file != null:
+		if _temp_file.is_open(): _temp_file.close()
+		_temp_file = null
 	_temp_file = FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
 	if _temp_file == null:
 		push_error("Couldn't create temporary save: %s"%FileAccess.get_open_error())
+		TEMP_PATH = ""
 		return
 	TEMP_PATH = _temp_file.get_path()
 	_temp_file.close()
 
 func _temp_open(mode: FileAccess.ModeFlags) -> FileAccess:
-	if _temp_file == null:
+	if _temp_file == null || !FileAccess.file_exists(TEMP_PATH):
 		_temp_create()
-	return FileAccess.open(TEMP_PATH, mode)
+	if _temp_file == null || TEMP_PATH.is_empty(): # Creation error
+		push_error("No TEMP_PATH to open file from!")
+		return null
+	var file := FileAccess.open(TEMP_PATH, mode)
+	if file == null:
+		push_error("Error opening temp file: %s"%error_string(FileAccess.get_open_error()))
+	return file
 
 func _temp_close() -> void:
 	if _temp_file == null:
@@ -69,6 +79,8 @@ func set_context(new_context: StringName) -> void:
 func register_node(node: PersistNode) -> void:
 	if !registry.has(node.context):
 		registry[node.context] = {}
+	if registry[node.context].has(node.index_name):
+		push_warning("Node context/index collision (will overwrite with latest)")
 	registry[node.context][node.index_name] = node
 	load_context(node.context)
 
@@ -98,6 +110,9 @@ func load_context(load_context_name: StringName) -> void:
 		file = _temp_file
 	else:
 		file = _temp_open(FileAccess.READ)
+	if file == null:
+		push_error("Unable to load context!")
+		return
 	file.seek(index[load_context_name][0])
 	var bytes: PackedByteArray = file.get_buffer(index[load_context_name][1])
 	var data: Dictionary = PersistEncoder.decode_dictionary(bytes, 0)[0]
@@ -138,6 +153,9 @@ func _read_preamble(file: FileAccess) -> Dictionary:
 ## Reads the header of [param file]. The header size is determined by
 ## [param version]. Leaves the file positioned at the start of the metadata.
 func read_header(file: FileAccess) -> PackedByteArray:
+	if file == null:
+		push_error("No file to read header from!")
+		return []
 	var version: int = _parse_preamble(
 		file.get_buffer(_PREAMBLE_SIZE), file.get_length()
 		).get("version", 0)
@@ -164,7 +182,7 @@ func _build_header() -> PackedByteArray:
 			# size 16 (excess cut off)
 			# Offset 32
 			buffer.append_array(PersistEncoder.encode_string(
-				ProjectSettings.get_setting("application/config/version")))
+				ProjectSettings.get_setting("application/config/version", "")))
 			buffer.resize(48)
 			buffer[buffer.size() - 1] = int(char(3)) # Force string terminator
 			# Unix Time
@@ -210,6 +228,9 @@ func _read_index(file: FileAccess, preamble: Dictionary) -> Dictionary:
 ## Writes magic, version, a placeholder index position, header, and metadata.
 ## Must be followed by the contexts, then [method _finalize_file].
 func _write_head(file: FileAccess) -> void:
+	if file == null:
+		push_error("No file to write header to!")
+		return
 	file.store_buffer(_MAGIC.to_ascii_buffer())
 	file.store_8(PROTOCOL_VERSION)
 	file.store_32(0) # Placeholder till we determine final size
@@ -235,6 +256,9 @@ func read_temp_index() -> Dictionary:
 	if not FileAccess.file_exists(TEMP_PATH):
 		return {}
 	var file := _temp_open(FileAccess.READ)
+	if file == null:
+		push_error("Unable to read temp index!")
+		return {}
 	var index := _read_index(file, _read_preamble(file))
 	return index
 
@@ -243,6 +267,9 @@ func read_temp_metadata() -> Dictionary:
 	if not FileAccess.file_exists(TEMP_PATH):
 		return {}
 	var file := _temp_open(FileAccess.READ)
+	if file == null:
+		push_error("Unable to read temp metadata!")
+		return {}
 	var preamble := _read_preamble(file)
 	if preamble.is_empty():
 		_temp_close()
@@ -270,8 +297,13 @@ func flush_pending_writes(force: bool = false) -> void:
 		old_file = _temp_file
 	else:
 		old_file = _temp_open(FileAccess.READ)
-	
+	if old_file == null:
+		push_error("Unable to open temp while flushing data!")
+		return
 	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
+	if new_file == null:
+		push_error("Couldn't create temp file to flush too: %s"%FileAccess.get_open_error())
+		return
 	_write_head(new_file)
 	var new_index: Dictionary = {}
 	
@@ -285,8 +317,8 @@ func flush_pending_writes(force: bool = false) -> void:
 		new_index[context_name] = new_file.get_position()
 		new_file.store_buffer(raw_bytes)
 	
-	if old_file:
-		_temp_close()
+	if old_file != null && old_file.is_open():
+		old_file.close()
 	
 	for context_name in pending_writes.keys():
 		new_index[context_name] = new_file.get_position()
@@ -311,66 +343,119 @@ func flush_all() -> void:
 ## Loads specified file. If the file has an invalid magic phrase, an
 ## unsupported version, or a bad index position, an error is pushed and
 ## a blank file is loaded instead
-func load_from_binary() -> void:
+func load_from_binary() -> Error:
 	if not FileAccess.file_exists(SAVE_PATH):
 		if FileAccess.file_exists(SAVE_PATH + ".backup"):
-			if DirAccess.copy_absolute(SAVE_PATH + ".backup", SAVE_PATH) != OK:
-				return
+			var error := DirAccess.copy_absolute(SAVE_PATH + ".backup", SAVE_PATH)
+			if error != OK:
+				push_error("Attempted to restore save from backup but encountered error: %s"%error_string(error))
+				return error
 		else:
-			return
+			push_error("Missing file to load from!")
+			return ERR_DOES_NOT_EXIST
+	var success: bool = true
+	var bytes: PackedByteArray
 	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.READ, COMPRESSION_MODE)
-	var bytes: PackedByteArray = save_file.get_buffer(save_file.get_length())
-	save_file.close()
-	if _parse_preamble(bytes, bytes.size()).is_empty():
+	if save_file == null:
+		push_error("Error loading binary from file: %s"%error_string(FileAccess.get_open_error()))
+		success = false
+	else:
+		bytes = save_file.get_buffer(save_file.get_length())
+		save_file.close()
+	if success && _parse_preamble(bytes, bytes.size()).is_empty():
 		push_error("Invalid or unsupported save file, loading blank file: %s"%SAVE_PATH)
 		new_binary()
-		return
+		success = false
+	# Re-attempt load with backup
+	if !success:
+		if FileAccess.file_exists(SAVE_PATH + ".backup"):
+			push_warning("Unable to load save, attempting to load from backup")
+			save_file = FileAccess.open_compressed(SAVE_PATH + ".backup", FileAccess.READ, COMPRESSION_MODE)
+			if save_file == null:
+				push_error("Error loading binary from file: %s"%error_string(FileAccess.get_open_error()))
+				return FileAccess.get_open_error()
+			bytes = save_file.get_buffer(save_file.get_length())
+			save_file.close()
+			if _parse_preamble(bytes, bytes.size()).is_empty():
+				push_error("Invalid or unsupported save file, loading blank file: %s"%SAVE_PATH + ".backup")
+				new_binary()
+				return ERR_INVALID_DATA
+		else:
+			push_error("Unable to load save: %s"%SAVE_PATH)
+			return ERR_INVALID_DATA
+	# We've now loaded from main or backup
 	var temp_file := _temp_open(FileAccess.WRITE)
+	if temp_file == null:
+		push_error("Unable to store loaded binary to temp!")
+		return ERR_FILE_CANT_WRITE
 	temp_file.store_buffer(bytes)
 	temp_file.close() # Must be flushed before metadata is read back
 	_temp_close()
 	metadata = read_temp_metadata()
 	pending_writes.clear()
+	return OK
 
 ## Saves currrent file
-func save_to_binary() -> void:
+func save_to_binary() -> Error:
 	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.copy_absolute(SAVE_PATH, SAVE_PATH + ".backup")
+		var error := DirAccess.copy_absolute(SAVE_PATH, SAVE_PATH + ".backup")
+		if error != OK:
+			push_warning("Couldn't backup save (continuing without backup): %s"%error_string(error))
 	flush_all()
 	if not FileAccess.file_exists(TEMP_PATH):
-		return
+		push_error("No temp file exists to save from")
+		return ERR_DOES_NOT_EXIST
 	var temp_file := _temp_open(FileAccess.READ)
+	if temp_file == null:
+		push_error("Unable to read temp to save binary from!")
+		return ERR_FILE_CANT_READ
 	var bytes: PackedByteArray = temp_file.get_buffer(temp_file.get_length())
 	_temp_close()
 	var save_file := FileAccess.open_compressed(SAVE_PATH + ".tmp", FileAccess.WRITE, COMPRESSION_MODE)
-	save_file.store_buffer(bytes)
-	save_file.close()
-	if DirAccess.rename_absolute(SAVE_PATH + ".tmp", SAVE_PATH) == OK:
+	if save_file == null:
+		push_error("Error saving binary to file: %s"%error_string(FileAccess.get_open_error()))
 		if FileAccess.file_exists(SAVE_PATH + ".backup"):
 			DirAccess.remove_absolute(SAVE_PATH + ".backup")
+		return FileAccess.get_open_error()
+	save_file.store_buffer(bytes)
+	save_file.close()
+	var error := DirAccess.rename_absolute(SAVE_PATH + ".tmp", SAVE_PATH)
+	if error != OK:
+		push_error("Error writing save: %s"%error_string(error))
+	if FileAccess.file_exists(SAVE_PATH + ".backup"):
+			DirAccess.remove_absolute(SAVE_PATH + ".backup")
+	return error
 
 ## Loads a new, blank file
-func new_binary() -> void:
+func new_binary() -> Error:
 	metadata = {}
 	var temp_file := _temp_open(FileAccess.WRITE)
+	if temp_file == null:
+		push_error("Unable to write new temp for new binary!")
+		return ERR_FILE_CANT_WRITE
 	_write_head(temp_file)
 	_finalize_file(temp_file, {})
 	_temp_close()
 	pending_writes.clear()
+	return OK
 
 ## Updates [member SAVE_PATH] using [member _SAVE_DIR], [param save_name],
 ## and [member _SAVE_EXTENSION]. [param save_name] will have invalid
 ## file characters replaced with '_'.
 func set_save_path(save_name: String) -> void:
-	save_name.validate_filename()
+	for part in save_name.split('/', false):
+		if part != part.validate_filename():
+			push_error("'%s' in '%s' is invalid for filename"%[part, save_name])
+		save_name.replace(part, part.validate_filename())
 	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
 	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
-		DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-	if !path.is_valid_filename():
-		push_error("Invlaid save path: %s"%path)
-		return
+		var error := DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+		if error != OK:
+			push_error("Couldn't create save directory: %s"%error_string(error))
 	if !DirAccess.dir_exists_absolute(path.get_base_dir()):
-		DirAccess.make_dir_absolute(path.get_base_dir())
+		var error := DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+		if error != OK:
+			push_error("Couldn't create save directory: %s"%error_string(error))
 	SAVE_PATH = path
 
 ## Lists names of all save file (excluding [member _SAVE_DIR] and
@@ -413,7 +498,13 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 		old_file = _temp_file
 	else:
 		old_file = _temp_open(FileAccess.READ)
+	if old_file == null:
+		push_error("Unable to read temp while deleting data!")
+		return
 	var new_file := FileAccess.create_temp(FileAccess.WRITE, _TEMP_FILE_PREFIX)
+	if new_file == null:
+		push_error("Couldn't create new temp while deleting data: %s"%FileAccess.get_open_error())
+		return
 	_write_head(new_file)
 	var new_index: Dictionary = {}
 	# Write modified version to new temp file
@@ -442,6 +533,7 @@ func erase_from_temp(contexts_to_erase: Array[StringName] = [],
 	
 	TEMP_PATH = new_file.get_path()
 	_temp_file = new_file
+	if old_file.is_open(): old_file.close()
 	_temp_close()
 	pending_writes.clear()
 
@@ -476,6 +568,9 @@ func get_file_by_name(save_name: String) -> FileAccess:
 	if not FileAccess.file_exists(path):
 		return null
 	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.READ, COMPRESSION_MODE)
+	if save_file == null:
+		push_error("Error accessing file: %s"%error_string(FileAccess.get_open_error()))
+		return null
 	save_file.close()
 	return save_file
 
@@ -528,7 +623,9 @@ func write_save_image(image: Image, save_name: String = "") -> void:
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(path)
 	if image != null:
-		image.save_png(path)
+		var error := image.save_png(path)
+		if error != OK:
+			push_error("Unable to write save image: %s"%error_string(error))
 
 ## Returns image related to [param save_name]. Uses current save if left blank.
 func get_save_image(save_name: String = "") -> ImageTexture:
@@ -566,4 +663,6 @@ func erase_save(save_name: String = "") -> void:
 		save_name = get_save_name()
 	var path := "%s/%s.%s"%[_SAVE_DIR, save_name, _SAVE_EXTENSION]
 	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
+		var error := DirAccess.remove_absolute(path)
+		if error != OK:
+			push_error("Couldn't erase save: %s"%error_string(error))
