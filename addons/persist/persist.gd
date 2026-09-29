@@ -82,27 +82,27 @@ func register_node(node: PersistNode) -> void:
 	if registry[node.context].has(node.index_name):
 		push_warning("Node context/index collision (will overwrite with latest)")
 	registry[node.context][node.index_name] = node
-	load_context(node.context)
+	_load_context(node.context)
 
-## Stop tracking a [PersistNode], and call a [method queue_pending_write] on it
+## Stop tracking a [PersistNode], and call a [method _queue_pending_write] on it
 func unregister_node(node: PersistNode) -> void:
 	if registry.has(node.context):
 		registry[node.context].erase(node.index_name)
-		queue_pending_write(node.context, node.index_name, node.get_state())
+		_queue_pending_write(node.context, node.index_name, node.get_state())
 
 ## Saves data to [member pending_writes] and makes a deffered call 
 ## to [method flush_pending_writes] (providing time for other writes to occur
 ## this frame before it they are flushed.
-func queue_pending_write(write_context: StringName, index: StringName, data: Dictionary) -> void:
+func _queue_pending_write(write_context: StringName, index: StringName, data: Dictionary) -> void:
 	if not pending_writes.has(write_context):
 		pending_writes[write_context] = {}
 	pending_writes[write_context][index] = data
 	flush_pending_writes.call_deferred()
 
-## Applies data for [param load_context_name] with matching registered [PersistNode]s
-func load_context(load_context_name: StringName) -> void:
-	var index := read_temp_index()
-	if not index.has(load_context_name) or not registry.has(load_context_name):
+## Applies data for [param _load_context_name] with matching registered [PersistNode]s
+func _load_context(_load_context_name: StringName) -> void:
+	var index := _read_temp_index()
+	if not index.has(_load_context_name) or not registry.has(_load_context_name):
 		return
 	
 	var file: FileAccess
@@ -113,19 +113,19 @@ func load_context(load_context_name: StringName) -> void:
 	if file == null:
 		push_error("Unable to load context!")
 		return
-	file.seek(index[load_context_name][0])
-	var bytes: PackedByteArray = file.get_buffer(index[load_context_name][1])
+	file.seek(index[_load_context_name][0])
+	var bytes: PackedByteArray = file.get_buffer(index[_load_context_name][1])
 	var data: Dictionary = PersistEncoder.decode_dictionary(bytes, 0)[0]
-	var context_registry: Dictionary = registry[load_context_name]
+	var context_registry: Dictionary = registry[_load_context_name]
 	for path in data.keys():
 		if context_registry.has(path):
 			context_registry[path].set_state(data[path])
-	_clean_up_load_context.call_deferred()
+	_clean_up__load_context.call_deferred()
 
-## Should be called after [method load_context] to ensure proper cleanup.
+## Should be called after [method _load_context] to ensure proper cleanup.
 ## Kept seperate so it may be called deffered, so we can load multiple contextes
 ## in a single frame, and only clean up once.
-func _clean_up_load_context() -> void:
+func _clean_up__load_context() -> void:
 	if _temp_file != null && _temp_file.is_open():
 		_temp_close()
 
@@ -152,7 +152,7 @@ func _read_preamble(file: FileAccess) -> Dictionary:
 
 ## Reads the header of [param file]. The header size is determined by
 ## [param version]. Leaves the file positioned at the start of the metadata.
-func read_header(file: FileAccess) -> PackedByteArray:
+func _read_header(file: FileAccess) -> PackedByteArray:
 	if file == null:
 		push_error("No file to read header from!")
 		return []
@@ -252,7 +252,7 @@ func _finalize_file(file: FileAccess, offsets: Dictionary) -> void:
 
 ## Returns a [Dictionary] of contexts and their file offset
 ## and length in our temporary save file
-func read_temp_index() -> Dictionary:
+func _read_temp_index() -> Dictionary:
 	if not FileAccess.file_exists(TEMP_PATH):
 		return {}
 	var file := _temp_open(FileAccess.READ)
@@ -263,7 +263,7 @@ func read_temp_index() -> Dictionary:
 	return index
 
 ## Returns the metadata stored in our temporary save file
-func read_temp_metadata() -> Dictionary:
+func _read_temp_metadata() -> Dictionary:
 	if not FileAccess.file_exists(TEMP_PATH):
 		return {}
 	var file := _temp_open(FileAccess.READ)
@@ -275,7 +275,7 @@ func read_temp_metadata() -> Dictionary:
 		_temp_close()
 		return {}
 	var index := _read_index(file, preamble)
-	read_header(file)
+	_read_header(file)
 	var start: int = file.get_position()
 	# Metadata runs until the first context (or the index if there are none)
 	var end: int = preamble["index_position"]
@@ -291,7 +291,7 @@ func read_temp_metadata() -> Dictionary:
 func flush_pending_writes(force: bool = false) -> void:
 	if pending_writes.is_empty() and not force:
 		return
-	var old_index: Dictionary = read_temp_index()
+	var old_index: Dictionary = _read_temp_index()
 	var old_file: FileAccess = null
 	if _temp_file != null && _temp_file.is_open():
 		old_file = _temp_file
@@ -391,7 +391,7 @@ func load_from_binary() -> Error:
 	temp_file.store_buffer(bytes)
 	temp_file.close() # Must be flushed before metadata is read back
 	_temp_close()
-	metadata = read_temp_metadata()
+	metadata = _read_temp_metadata()
 	pending_writes.clear()
 	return OK
 
@@ -489,7 +489,7 @@ func get_save_subdirs(subdir: String = "") -> PackedStringArray:
 ## specify {context : indices} to erase.
 func erase_from_temp(contexts_to_erase: Array[StringName] = [], 
 					indexes_to_erase: Dictionary[StringName, PackedStringArray] = {}) -> void:
-	var old_index: Dictionary = read_temp_index()
+	var old_index: Dictionary = _read_temp_index()
 	if old_index.is_empty():
 		return
 	
@@ -583,7 +583,7 @@ func _get_header_buffer(save_name: String = "") -> PackedByteArray:
 	var file := get_file_by_name(save_name)
 	if file == null:
 		return []
-	return read_header(file)
+	return _read_header(file)
 
 ## Returns meta-name from header of [param save_name]. Uses current save if left blank.
 func get_header_name(save_name: String = "") -> String:

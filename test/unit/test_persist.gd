@@ -62,11 +62,11 @@ func test_flush_pending_writes_clears_buffer() -> void:
 	assert_true(Persist.pending_writes.is_empty())
 	node.free()
 
-func test_read_temp_index_after_flush() -> void:
+func test__read_temp_index_after_flush() -> void:
 	var node: PersistNode = _make_node(&"context_a", 10)
 	test_root.remove_child(node)
 	Persist.flush_pending_writes()
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_true(index.has(&"context_a"))
 	node.free()
 
@@ -79,31 +79,31 @@ func test_flush_preserves_untouched_contexts() -> void:
 	test_root.remove_child(node_b)
 	Persist.flush_pending_writes()
 
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_true(index.has(&"context_a"))
 	assert_true(index.has(&"context_b"))
 	node_a.free()
 	node_b.free()
 
-func test_load_context_restores_live_node() -> void:
+func test__load_context_restores_live_node() -> void:
 	var node: PersistNode = _make_node(&"context_a", 55)
 	test_root.remove_child(node)
 	Persist.flush_pending_writes()
 
 	test_root.add_child(node)
 	node.set("health", 0)
-	Persist.load_context(&"context_a")
+	Persist._load_context(&"context_a")
 	assert_eq(node.get("health"), 55)
 	node.free()
 
-func test_load_context_does_nothing_for_missing_context() -> void:
-	Persist.load_context(&"nonexistent_context")
+func test__load_context_does_nothing_for_missing_context() -> void:
+	Persist._load_context(&"nonexistent_context")
 	pass_test("no crash on missing context")
 
 func test_flush_all_snapshots_live_nodes() -> void:
 	var node: PersistNode = _make_node(&"context_a", 77)
 	Persist.flush_all()
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_true(index.has(&"context_a"))
 	node.free()
 
@@ -138,7 +138,7 @@ func test_full_save_and_load_round_trip() -> void:
 	Persist.set_context(&"context_a")
 	test_root.add_child(new_node)
 
-	Persist.load_context(&"context_a")
+	Persist._load_context(&"context_a")
 	assert_eq(new_node.get("health"), 123)
 	new_node.free()
 
@@ -150,7 +150,7 @@ func test_erase_from_temp_removes_entire_context() -> void:
 	Persist.flush_pending_writes()
 	
 	Persist.erase_from_temp([&"context_a"])
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_false(index.has(&"context_a"))
 	assert_true(index.has(&"context_b"))
 	node_a.free()
@@ -166,9 +166,9 @@ func test_erase_from_temp_removes_specific_indicies() -> void:
 	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_a": [node_a.index_name]}
 	Persist.erase_from_temp([], to_erase)
 	
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_true(index.has(&"context_a"))
-	Persist.load_context(&"context_a")
+	Persist._load_context(&"context_a")
 	assert_false(Persist.registry[&"context_a"].has(node_a.index_name))
 	node_a.free()
 	node_b.free()
@@ -185,7 +185,7 @@ func test_erase_from_temp_preserves_other_indicies() -> void:
 	
 	test_root.add_child(node_b)
 	node_b.set("health", 0)
-	Persist.load_context(&"context_a")
+	Persist._load_context(&"context_a")
 	assert_eq(node_b.get("health"), 20)
 	node_a.free()
 	node_b.free()
@@ -198,7 +198,7 @@ func test_erase_from_temp_removes_empty_contexts() -> void:
 	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_a": [node_a.index_name]}
 	Persist.erase_from_temp([], to_erase)
 	
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_false(index.has(&"context_a"))
 	node_a.free()
 
@@ -214,7 +214,7 @@ func test_erase_from_temp_multiple_contexts_and_indicies() -> void:
 	var to_erase: Dictionary[StringName, PackedStringArray] = {&"context_b": [node_b.index_name]}
 	Persist.erase_from_temp([&"context_a"], to_erase)
 	
-	var index: Dictionary = Persist.read_temp_index()
+	var index: Dictionary = Persist._read_temp_index()
 	assert_false(index.has(&"context_a"))
 	assert_false(index.has(&"context_b"))
 	assert_true(index.has(&"context_c"))
