@@ -313,7 +313,11 @@ func flush_all() -> void:
 ## a blank file is loaded instead
 func load_from_binary() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
-		return
+		if FileAccess.file_exists(SAVE_PATH + ".backup"):
+			if DirAccess.copy_absolute(SAVE_PATH + ".backup", SAVE_PATH) != OK:
+				return
+		else:
+			return
 	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.READ, COMPRESSION_MODE)
 	var bytes: PackedByteArray = save_file.get_buffer(save_file.get_length())
 	save_file.close()
@@ -330,15 +334,20 @@ func load_from_binary() -> void:
 
 ## Saves currrent file
 func save_to_binary() -> void:
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.copy_absolute(SAVE_PATH, SAVE_PATH + ".backup")
 	flush_all()
 	if not FileAccess.file_exists(TEMP_PATH):
 		return
 	var temp_file := _temp_open(FileAccess.READ)
 	var bytes: PackedByteArray = temp_file.get_buffer(temp_file.get_length())
 	_temp_close()
-	var save_file := FileAccess.open_compressed(SAVE_PATH, FileAccess.WRITE, COMPRESSION_MODE)
+	var save_file := FileAccess.open_compressed(SAVE_PATH + ".tmp", FileAccess.WRITE, COMPRESSION_MODE)
 	save_file.store_buffer(bytes)
 	save_file.close()
+	if DirAccess.rename_absolute(SAVE_PATH + ".tmp", SAVE_PATH) == OK:
+		if FileAccess.file_exists(SAVE_PATH + ".backup"):
+			DirAccess.remove_absolute(SAVE_PATH + ".backup")
 
 ## Loads a new, blank file
 func new_binary() -> void:
