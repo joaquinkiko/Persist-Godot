@@ -15,14 +15,12 @@ class_name PersistNode extends Node
 ## Defaults to this node's nodepath
 @export var index_name: StringName
 
-func _init() -> void:
+func _enter_tree() -> void:
 	if root == null:
 		root = self
 	if context.is_empty():
 		context = Persist.context
 	_validate_properties()
-
-func _enter_tree() -> void:
 	if index_name.is_empty():
 		index_name = StringName(get_path())
 	Persist.register_node(self)
