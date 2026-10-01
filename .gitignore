@@ -1,3 +1,5 @@
 .godot/
 .editorconfig
 addons/gut/
+*.uid
+project.godot
